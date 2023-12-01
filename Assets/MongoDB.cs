@@ -24,41 +24,61 @@ public class HighscoresWrapper
 {
     public List<HighscoreData> highscores;
 }
-public class MongoIDB : MonoBehaviour
+public class MongoDB : MonoBehaviour
 {
-    
-    private const string apiUrl = "http://localhost:3000/highscores";
+    private const string apiUrlStart = "http://localhost:3000/";
+    private const string showHighscoresApiUrl = "highscores";
+    private const string addHighscoreApiUrl = "addhighscore";
+    public bool busy;
+    private WaitForSeconds waitTime = new WaitForSeconds(0.5f);
+    public static MongoDB l;
+    [Header("For Testing")]
+    public string addScoreTestName;
+    public int addScoreTestScore;
 
-    void Start()
+    private void Awake()
     {
-        StartCoroutine(ShowHighscores());
+        if (l != null)
+            Destroy(gameObject);
+        l = this;
+        DontDestroyOnLoad(gameObject);
     }
 
 
-    IEnumerator ShowHighscores()
+    public IEnumerator ShowHighscores()
     {
-        UnityWebRequest request = UnityWebRequest.Get(apiUrl);
+        if (busy)
+        {
+            Debug.LogWarning("Waiting for another process to finish");
+            yield return waitTime;
+        }
+        busy = true;
+
+        UnityWebRequest request = UnityWebRequest.Get(apiUrlStart + showHighscoresApiUrl);
 
         yield return request.SendWebRequest();
 
+        // Wait until the request is done
+        while (!request.isDone)
+        {
+            yield return null; // Wait for the next frame
+        }
+
         if (request.result == UnityWebRequest.Result.Success)
         {
-            Debug.Log($"Raw JSON Response: {request.downloadHandler.text}");
+            //Debug.Log($"Raw JSON Response: {request.downloadHandler.text}");
 
             // Deserialize the received JSON into the wrapper class
+            // {"highscores":[{"name":"name string","highscore":0}]} is this data's format
             HighscoresWrapper wrapper = JsonUtility.FromJson<HighscoresWrapper>(request.downloadHandler.text);
 
-            // Check if there are highscores
             if (wrapper.highscores != null)
             {
-                // Access highscores
                 foreach (HighscoreData highscore in wrapper.highscores)
                 {
-                    // You can access _id as a string, as it's a nested object in your JSON
-                    Debug.Log($"ID: {highscore._id}, Name: {highscore.name}, Score: {highscore.highscore}");
+                    // Printing name and score
+                    Debug.Log($"Name: {highscore.name}, Score: {highscore.highscore}");
                 }
-
-                Debug.Log("Hit here");
             }
             else
             {
@@ -69,5 +89,52 @@ public class MongoIDB : MonoBehaviour
         {
             Debug.LogError($"Error: {request.error}");
         }
+
+        busy = false;
+
+        request.Dispose();
+    }
+
+    public IEnumerator AddHighscore(string name, int highscore)
+    {
+        if (busy)
+        {
+            Debug.LogWarning("Waiting for another process to finish");
+            yield return waitTime;
+        }
+        busy = true;
+
+        
+        string jsonPayload = $"{{\"name\": \"{name}\", \"highscore\": {highscore}}}";
+
+        // Create a POST request
+        UnityWebRequest request = new UnityWebRequest(apiUrlStart + addHighscoreApiUrl, "POST");
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
+        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+
+
+        // Send the request
+        yield return request.SendWebRequest();
+
+        // Wait until the request is done
+        while (!request.isDone)
+        {
+            yield return null; // Wait for the next frame
+        }
+        
+        if (request.result == UnityWebRequest.Result.Success)
+        {
+            Debug.Log("Highscore submitted successfully");
+        }
+        else
+        {
+            Debug.LogError($"Error: {request.error}");
+        }
+        busy = false;
+        request.Dispose();
+
+        
     }
 }
