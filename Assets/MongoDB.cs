@@ -15,7 +15,7 @@ public class Highscore
 public class HighscoreData
 {
     public string _id; // Change the type to string
-    public string name;
+    public string username;
     public int highscore;
 }
 
@@ -26,11 +26,13 @@ public class HighscoresWrapper
 }
 public class MongoDB : MonoBehaviour
 {
-    private const string apiUrlStart = "http://localhost:3000/";
-    private const string showHighscoresApiUrl = "highscores";
-    private const string addHighscoreApiUrl = "addhighscore";
+    public UserAccount account;
+
+    public const string apiUrlStart = "http://localhost:3000";
+    private const string showHighscoresApiUrl = "/highscores";
+    private const string addHighscoreApiUrl = "/addhighscore";
     public bool busy;
-    private WaitForSeconds waitTime = new WaitForSeconds(0.5f);
+    public readonly WaitForSeconds waitTime = new WaitForSeconds(0.5f);
     public static MongoDB l;
     [Header("For Testing")]
     public string addScoreTestName;
@@ -43,7 +45,6 @@ public class MongoDB : MonoBehaviour
         l = this;
         DontDestroyOnLoad(gameObject);
     }
-
 
     public IEnumerator ShowHighscores()
     {
@@ -74,11 +75,7 @@ public class MongoDB : MonoBehaviour
 
             if (wrapper.highscores != null)
             {
-                foreach (HighscoreData highscore in wrapper.highscores)
-                {
-                    // Printing name and score
-                    Debug.Log($"Name: {highscore.name}, Score: {highscore.highscore}");
-                }
+                UIControl.l.highscore.SetHighScores(wrapper);
             }
             else
             {
@@ -95,7 +92,12 @@ public class MongoDB : MonoBehaviour
         request.Dispose();
     }
 
-    public IEnumerator AddHighscore(string name, int highscore)
+    public void BegingAddHighscore(string name, int score)
+    {
+        StartCoroutine(AddHighscore(name, score));
+    }
+
+    public IEnumerator AddHighscore(string name, int score)
     {
         if (busy)
         {
@@ -104,15 +106,22 @@ public class MongoDB : MonoBehaviour
         }
         busy = true;
 
-        
-        string jsonPayload = $"{{\"name\": \"{name}\", \"highscore\": {highscore}}}";
+        // Create a form to send highscore data
+        WWWForm form = new WWWForm();
+        form.AddField("highscore", score);
 
-        // Create a POST request
-        UnityWebRequest request = new UnityWebRequest(apiUrlStart + addHighscoreApiUrl, "POST");
-        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
-        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-        request.downloadHandler = new DownloadHandlerBuffer();
-        request.SetRequestHeader("Content-Type", "application/json");
+        // Set the authentication token in the request headers
+        //if (!string.IsNullOrEmpty(UserAccount.l.authResponse.token))
+        //{
+            // Bearer indicates the authentication type
+        //    form.headers["Authorization"] = "Bearer " + UserAccount.l.authResponse.token;
+        //}
+
+        UnityWebRequest request = UnityWebRequest.Post(apiUrlStart + addHighscoreApiUrl, form);
+        request.SetRequestHeader("Authorization", UserAccount.l.authResponse.token);
+
+        // Make a UnityWebRequest to add the highscore
+        //UnityWebRequest request = UnityWebRequest.Post(apiUrlStart + addHighscoreApiUrl, form);
 
 
         // Send the request
@@ -130,11 +139,17 @@ public class MongoDB : MonoBehaviour
         }
         else
         {
+            if ((int)request.responseCode == 401 || (int)request.responseCode == 403)
+            {
+                UIControl.l.highscore.feedbackText.text = "Not logged in";
+            }
+            
             Debug.LogError($"Error: {request.error}");
         }
         busy = false;
         request.Dispose();
 
-        
+
+        StartCoroutine(ShowHighscores());
     }
 }
